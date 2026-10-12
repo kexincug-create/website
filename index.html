@@ -316,8 +316,11 @@
         <div class="result-time" id="resultSeconds">0.000</div>
         <div class="result-unit">秒</div>
         <div class="result-meta">
+          <div>参与者编号：<strong id="participantIdOutput">—</strong></div>
+          <div>实验组别：<strong id="experimentGroupOutput">—</strong></div>
           <div>假关闭按钮点击次数：<strong id="falseClicks">0</strong></div>
           <div>总点击次数：<strong id="totalClicks">1</strong></div>
+          <div>页面切出：<strong id="pageHiddenSummary">否</strong></div>
         </div>
         <button class="retry" id="retry" type="button">再测一次</button>
         <div class="saving" id="savingState"></div>
@@ -333,24 +336,66 @@
       const backdrop = document.getElementById('backdrop');
       const result = document.getElementById('result');
       const resultSeconds = document.getElementById('resultSeconds');
+      const participantIdOutput = document.getElementById('participantIdOutput');
+      const experimentGroupOutput = document.getElementById('experimentGroupOutput');
       const falseClicksOutput = document.getElementById('falseClicks');
       const totalClicksOutput = document.getElementById('totalClicks');
+      const pageHiddenSummary = document.getElementById('pageHiddenSummary');
       const savingState = document.getElementById('savingState');
       const retry = document.getElementById('retry');
+      const experiment = document.getElementById('experiment');
 
-      let startedAt = null;
+      const API_ENDPOINT = 'https://kexin-d2gc3qfd67c83eb92-1505098830.ap-shanghai.app.tcloudbase.com/api/experiment-records';
+      const urlParams = new URLSearchParams(window.location.search);
+      const experimentGroup = (urlParams.get('group') || 'C').trim().slice(0, 32);
+      const condition = (urlParams.get('condition') || 'high_ambiguity_two_close_cues').trim().slice(0, 128);
+
+      let visibleStartedAt = null;
+      let visibleExposureMs = 0;
+      let hiddenStartedAt = null;
+      let hiddenDurationMs = 0;
+      let pageHiddenCount = 0;
       let falseClicks = 0;
       let totalClicks = 0;
       let completed = false;
-      let participantId = '';
+      let trialId = '';
 
-      const makeParticipantId = () => {
+      const makeId = (prefix) => {
         if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-        return `trial-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       };
 
+      const participantId = (() => {
+        const supplied = (urlParams.get('participantId') || '').trim().slice(0, 128);
+        if (supplied) return supplied;
+        const saved = sessionStorage.getItem('experimentParticipantId');
+        if (saved) return saved;
+        const generated = makeId('participant');
+        sessionStorage.setItem('experimentParticipantId', generated);
+        return generated;
+      })();
+
+      function finishVisibleSegment(now = performance.now()) {
+        if (visibleStartedAt !== null) {
+          visibleExposureMs += Math.max(0, now - visibleStartedAt);
+          visibleStartedAt = null;
+        }
+      }
+
+      function finishHiddenSegment(now = performance.now()) {
+        if (hiddenStartedAt !== null) {
+          hiddenDurationMs += Math.max(0, now - hiddenStartedAt);
+          hiddenStartedAt = null;
+        }
+      }
+
       function startTrial() {
-        participantId = makeParticipantId();
+        trialId = makeId('trial');
+        visibleStartedAt = null;
+        visibleExposureMs = 0;
+        hiddenStartedAt = null;
+        hiddenDurationMs = 0;
+        pageHiddenCount = 0;
         falseClicks = 0;
         totalClicks = 0;
         completed = false;
@@ -359,46 +404,78 @@
         backdrop.style.display = 'block';
         savingState.textContent = '';
         requestAnimationFrame(() => requestAnimationFrame(() => {
-          startedAt = performance.now();
+          const now = performance.now();
+          if (document.visibilityState === 'visible') visibleStartedAt = now;
+          else hiddenStartedAt = now;
           document.documentElement.dataset.experimentReady = 'true';
         }));
       }
 
+      document.addEventListener('visibilitychange', () => {
+        if (completed || (visibleStartedAt === null && hiddenStartedAt === null)) return;
+        const now = performance.now();
+        if (document.visibilityState === 'hidden') {
+          finishVisibleSegment(now);
+          hiddenStartedAt = now;
+          pageHiddenCount += 1;
+        } else {
+          finishHiddenSegment(now);
+          visibleStartedAt = now;
+        }
+      });
+
+      experiment.addEventListener('click', () => {
+        if (!completed && (visibleStartedAt !== null || hiddenStartedAt !== null)) totalClicks += 1;
+      }, true);
+
       fakeClose.addEventListener('click', () => {
-        if (completed || startedAt === null) return;
+        if (completed || (visibleStartedAt === null && hiddenStartedAt === null)) return;
         falseClicks += 1;
-        totalClicks += 1;
       });
 
       realClose.addEventListener('click', async () => {
-        if (completed || startedAt === null) return;
+        if (completed || (visibleStartedAt === null && hiddenStartedAt === null)) return;
         completed = true;
-        totalClicks += 1;
-        const durationMs = Math.round(performance.now() - startedAt);
+        const now = performance.now();
+        finishVisibleSegment(now);
+        finishHiddenSegment(now);
+        const durationMs = Math.round(visibleExposureMs);
+        const roundedHiddenDurationMs = Math.round(hiddenDurationMs);
         const payload = {
           participantId,
-          condition: 'high_ambiguity_two_close_cues',
+          trialId,
+          experimentGroup,
+          condition,
           exposureDurationMs: durationMs,
           exposureDurationSeconds: Number((durationMs / 1000).toFixed(3)),
           falseCloseClicks: falseClicks,
           totalClicks,
+          pageWasHidden: pageHiddenCount > 0,
+          pageHiddenCount,
+          pageHiddenDurationMs: roundedHiddenDurationMs,
           completedAt: new Date().toISOString()
         };
 
         localStorage.setItem('latestExposureResult', JSON.stringify(payload));
         resultSeconds.textContent = (durationMs / 1000).toFixed(3);
+        participantIdOutput.textContent = participantId;
+        experimentGroupOutput.textContent = experimentGroup;
         falseClicksOutput.textContent = String(falseClicks);
         totalClicksOutput.textContent = String(totalClicks);
+        pageHiddenSummary.textContent = pageHiddenCount > 0
+          ? `是（${pageHiddenCount} 次，共 ${(roundedHiddenDurationMs / 1000).toFixed(3)} 秒）`
+          : '否';
         sheet.classList.add('closed');
         backdrop.style.display = 'none';
         result.classList.add('show');
         savingState.textContent = '正在保存实验记录…';
 
         try {
-          const response = await fetch('/api/exposure', {
+          const response = await fetch(API_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            mode: 'cors'
           });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           savingState.textContent = '实验记录已保存，可以回到对话中询问结果。';
