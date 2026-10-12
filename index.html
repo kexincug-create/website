@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>关闭线索实验原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+      --ink: #0e0e0e;
+      --secondary: #7a7e85;
+      --surface-soft: #f5f8f9;
+      --brand: #3549ff;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; margin: 0; }
+    body {
+      display: grid;
+      place-items: center;
+      background: #e9ebef;
+      color: var(--ink);
+    }
+
+    button { font: inherit; }
+
+    .phone {
+      position: relative;
+      width: min(375px, 100vw);
+      height: min(812px, 100vh);
+      min-height: 690px;
+      overflow: hidden;
+      background: #f5f5f5;
+      box-shadow: 0 18px 60px rgba(20, 24, 40, .18);
+      isolation: isolate;
+    }
+
+    .statusbar {
+      height: 44px;
+      position: relative;
+      background: #f5f5f5;
+    }
+    .statusbar .time { position: absolute; left: 21px; top: 12px; width: 54px; height: 21px; }
+    .statusbar .right { position: absolute; right: 15px; top: 17px; width: 67px; height: 12px; }
+
+    .nav {
+      height: 44px;
+      display: grid;
+      grid-template-columns: 84px 1fr 84px;
+      align-items: center;
+      background: #f5f5f5;
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .back { padding-left: 16px; font-size: 34px; font-weight: 200; line-height: 1; transform: translateY(-2px); }
+    .nav-title { text-align: center; }
+    .nav-actions { display: flex; justify-content: flex-end; gap: 12px; padding-right: 16px; font-size: 20px; }
+
+    .notice {
+      margin: 12px 16px 8px;
+      height: 44px;
+      padding: 0 12px;
+      border-radius: 12px;
+      background: #eef0f2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #565b63;
+      font-size: 12px;
+    }
+    .notice a { color: var(--brand); text-decoration: none; }
+
+    .workspace {
+      margin: 0 16px;
+      padding: 12px;
+      border-radius: 20px;
+      background: white;
+    }
+    .tools { display: flex; align-items: center; justify-content: space-between; color: var(--secondary); font-size: 13px; }
+    .counter { width: 96px; height: 32px; border-radius: 6px; background: var(--surface-soft); display: flex; align-items: center; justify-content: space-around; color: #151515; font-weight: 600; }
+    .tool-links { display: flex; gap: 14px; }
+
+    .previews { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .preview-card { text-align: center; font-size: 15px; }
+    .preview-image {
+      position: relative;
+      aspect-ratio: 154 / 230;
+      border-radius: 12px;
+      overflow: hidden;
+      border: .5px solid rgba(0,0,0,.12);
+      background: #e8eaed;
+    }
+    .preview-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .preview-card span { display: block; margin-top: 10px; }
+
+    .buybar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 114px;
+      padding: 12px 16px 34px;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .price b { font-size: 22px; }
+    .price small { display: block; color: #565b63; margin-top: 3px; }
+    .buy-actions { width: 224px; display: grid; grid-template-columns: 1fr 1fr; }
+    .buy-actions div { height: 44px; display: grid; place-items: center; font-size: 14px; font-weight: 600; }
+    .cart { background: #ebedff; color: var(--brand); border-radius: 12px 0 0 12px; }
+    .customize { background: var(--brand); color: white; border-radius: 0 12px 12px 0; }
+
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      background: rgba(0,0,0,.70);
+    }
+
+    .sheet {
+      position: absolute;
+      z-index: 6;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 536px;
+      border-radius: 32px 32px 0 0;
+      background: white;
+      overflow: hidden;
+      transform: translateY(0);
+      transition: transform .22s ease, opacity .22s ease;
+    }
+    .sheet.closed { transform: translateY(104%); opacity: 0; pointer-events: none; }
+
+    .sheet-header {
+      height: 60px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sheet-title { font-size: 18px; font-weight: 650; }
+
+    .close-control {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 100px;
+      padding: 9px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(90deg, #f5f8f9, #f5f8f9), linear-gradient(90deg, rgba(0,0,0,.1), rgba(0,0,0,.1));
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .08s ease, background-color .08s ease;
+    }
+    .close-control:active { transform: scale(.88); background: #e8eaed; }
+    .close-control img { width: 14px; height: 14px; display: block; }
+    .real-close { position: relative; z-index: 2; }
+    .fake-close { position: absolute; left: 0; top: 60px; z-index: 3; }
+
+    .line-item {
+      height: 105px;
+      padding: 31px 16px 0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 15px;
+    }
+    .line-item .muted { color: var(--secondary); }
+
+    .details {
+      margin: 25px 16px 0;
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      font-size: 14px;
+    }
+    .detail + .detail { margin-top: 10px; }
+    .detail b { display: block; margin-bottom: 3px; font-weight: 500; }
+    .detail p { margin: 0; color: var(--secondary); font-size: 12px; line-height: 1.55; }
+
+    .pro {
+      height: 55px;
+      margin: 12px 16px 0;
+      border-radius: 16px;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(128deg, rgba(255,255,255,.5), rgba(255,255,255,.5)), linear-gradient(128deg, #ffc2fa 0%, #ffdad8 50%, #fff5a8 100%);
+    }
+    .pro-top { color: #802060; font-size: 13px; font-weight: 600; }
+    .pro-top img { width: 26px; height: 14px; vertical-align: -2px; margin-right: 4px; }
+    .pro-bottom { margin-top: 4px; font-size: 12px; }
+    .pro-bottom em { color: #87128b; font-style: normal; }
+    .pro-price { font-weight: 700; font-size: 14px; white-space: nowrap; }
+
+    .total { height: 55px; padding: 16px; display: flex; justify-content: space-between; font-size: 15px; }
+    .total b { font-size: 17px; }
+    .home-indicator { position: absolute; left: 50%; bottom: 9px; width: 134px; height: 5px; margin-left: -67px; border-radius: 100px; background: black; }
+
+    .result {
+      position: absolute;
+      z-index: 8;
+      inset: 0;
+      padding: 24px;
+      display: none;
+      place-items: center;
+      background: rgba(245,245,245,.96);
+    }
+    .result.show { display: grid; }
+    .result-card {
+      width: 100%;
+      padding: 24px;
+      border-radius: 24px;
+      background: white;
+      box-shadow: 0 16px 50px rgba(0,0,0,.14);
+      text-align: center;
+    }
+    .result-label { color: var(--secondary); font-size: 14px; }
+    .result-time { margin: 8px 0 2px; font: 700 42px/1.15 "Poppins", -apple-system, sans-serif; }
+    .result-unit { color: var(--secondary); font-size: 13px; }
+    .result-meta { margin: 18px 0; padding: 12px; border-radius: 12px; background: var(--surface-soft); text-align: left; font-size: 13px; line-height: 1.8; }
+    .retry { width: 100%; height: 44px; border: 0; border-radius: 12px; background: var(--brand); color: white; font-weight: 600; cursor: pointer; }
+
+    .saving { margin-top: 8px; min-height: 18px; color: var(--secondary); font-size: 12px; }
+
+    @media (max-height: 730px) {
+      .sheet { height: 500px; }
+      .details { margin-top: 5px; }
+      .line-item { height: 84px; padding-top: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" id="experiment" aria-label="广告关闭线索实验页面">
+    <div class="statusbar" aria-hidden="true">
+      <img class="time" src="assets/status-time.svg" alt="">
+      <img class="right" src="assets/status-right.svg" alt="">
+    </div>
+
+    <header class="nav" aria-hidden="true">
+      <div class="back">‹</div>
+      <div class="nav-title">定制中心</div>
+      <div class="nav-actions"><span>□</span><span>🛒</span></div>
+    </header>
+
+    <section class="notice" aria-hidden="true">
+      <span>ⓘ 显示区域为打印区域(包含出血区)，如需…</span>
+      <a>上传规则</a>
+    </section>
+
+    <section class="workspace" aria-hidden="true">
+      <div class="tools">
+        <div class="counter"><span>−</span><span>10</span><span>＋</span></div>
+        <div class="tool-links"><span>⌗ 预览</span><span>♲ 删除</span></div>
+      </div>
+      <div class="previews">
+        <div class="preview-card">
+          <div class="preview-image"><img src="assets/thumb-1.jpg" alt=""></div>
+          <span>卡面</span>
+        </div>
+        <div class="preview-card">
+          <div class="preview-image"><img src="assets/thumb-4.png" alt=""></div>
+          <span>卡背</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="buybar" aria-hidden="true">
+      <div class="price">¥ <b>2.99</b><small>合计0.299/张</small></div>
+      <div class="buy-actions"><div class="cart">加购</div><div class="customize">立即定制</div></div>
+    </div>
+
+    <div class="backdrop" id="backdrop"></div>
+
+    <section class="sheet" id="adSheet" aria-label="付费明细广告弹层">
+      <div class="sheet-header">
+        <div class="sheet-title">付费明细</div>
+        <button class="close-control real-close" id="realClose" type="button" aria-label="关闭">
+          <img src="assets/close.svg" alt="">
+        </button>
+      </div>
+
+      <button class="close-control fake-close" id="fakeClose" type="button" aria-label="关闭">
+        <img src="assets/close.svg" alt="">
+      </button>
+
+      <div class="line-item"><span>小卡</span><span class="muted">¥10.99</span></div>
+
+      <div class="details">
+        <div class="detail"><b>付费模板</b><p>苹果气泡模板、苹果气泡模板</p></div>
+        <div class="detail"><b>付费花字</b><p>爱心贴纸、Sparkle花字、Sparkle花字、Sparkle花字、Sparkle花字、</p></div>
+        <div class="detail"><b>付费贴纸</b><p>爱心贴纸、Sparkle花字、写不下用省略号。</p></div>
+      </div>
+
+      <div class="pro">
+        <div>
+          <div class="pro-top"><img src="assets/tag.svg" alt="Pro">订阅周卡，本单立减4元！</div>
+          <div class="pro-bottom">加购即代表您同意<em>购买须知</em>，查看权益 〉</div>
+        </div>
+        <div class="pro-price">¥ 8.97　●</div>
+      </div>
+
+      <div class="total"><span>总合计</span><b>¥14</b></div>
+      <div class="home-indicator" aria-hidden="true"></div>
+    </section>
+
+    <section class="result" id="result" aria-live="polite">
+      <div class="result-card">
+        <div class="result-label">本次广告实际曝光时长</div>
+        <div class="result-time" id="resultSeconds">0.000</div>
+        <div class="result-unit">秒</div>
+        <div class="result-meta">
+          <div>假关闭按钮点击次数：<strong id="falseClicks">0</strong></div>
+          <div>总点击次数：<strong id="totalClicks">1</strong></div>
+        </div>
+        <button class="retry" id="retry" type="button">再测一次</button>
+        <div class="saving" id="savingState"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const realClose = document.getElementById('realClose');
+      const fakeClose = document.getElementById('fakeClose');
+      const sheet = document.getElementById('adSheet');
+      const backdrop = document.getElementById('backdrop');
+      const result = document.getElementById('result');
+      const resultSeconds = document.getElementById('resultSeconds');
+      const falseClicksOutput = document.getElementById('falseClicks');
+      const totalClicksOutput = document.getElementById('totalClicks');
+      const savingState = document.getElementById('savingState');
+      const retry = document.getElementById('retry');
+
+      let startedAt = null;
+      let falseClicks = 0;
+      let totalClicks = 0;
+      let completed = false;
+      let participantId = '';
+
+      const makeParticipantId = () => {
+        if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        return `trial-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      };
+
+      function startTrial() {
+        participantId = makeParticipantId();
+        falseClicks = 0;
+        totalClicks = 0;
+        completed = false;
+        result.classList.remove('show');
+        sheet.classList.remove('closed');
+        backdrop.style.display = 'block';
+        savingState.textContent = '';
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          startedAt = performance.now();
+          document.documentElement.dataset.experimentReady = 'true';
+        }));
+      }
+
+      fakeClose.addEventListener('click', () => {
+        if (completed || startedAt === null) return;
+        falseClicks += 1;
+        totalClicks += 1;
+      });
+
+      realClose.addEventListener('click', async () => {
+        if (completed || startedAt === null) return;
+        completed = true;
+        totalClicks += 1;
+        const durationMs = Math.round(performance.now() - startedAt);
+        const payload = {
+          participantId,
+          condition: 'high_ambiguity_two_close_cues',
+          exposureDurationMs: durationMs,
+          exposureDurationSeconds: Number((durationMs / 1000).toFixed(3)),
+          falseCloseClicks: falseClicks,
+          totalClicks,
+          completedAt: new Date().toISOString()
+        };
+
+        localStorage.setItem('latestExposureResult', JSON.stringify(payload));
+        resultSeconds.textContent = (durationMs / 1000).toFixed(3);
+        falseClicksOutput.textContent = String(falseClicks);
+        totalClicksOutput.textContent = String(totalClicks);
+        sheet.classList.add('closed');
+        backdrop.style.display = 'none';
+        result.classList.add('show');
+        savingState.textContent = '正在保存实验记录…';
+
+        try {
+          const response = await fetch('/api/exposure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          savingState.textContent = '实验记录已保存，可以回到对话中询问结果。';
+        } catch (error) {
+          savingState.textContent = '结果已显示并保存在本机浏览器，但服务器记录未成功。';
+        }
+      });
+
+      retry.addEventListener('click', startTrial);
+      window.addEventListener('load', startTrial, { once: true });
+    })();
+  </script>
+</body>
+</html>
